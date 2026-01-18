@@ -200,13 +200,13 @@ def process_article(post: Dict) -> Optional[Dict]:
         title = post.get('title', 'Untitled')
         content = post.get('content_html', '') or post.get('content', '')
         
-        # Handle missing publish_date with fallback
+        # Handle missing publish_date with fallback to current date
         publish_date = post.get('published_at') or post.get('created_at') or post.get('updated_at')
         
-        # If still no date, skip this article
+        # If still no date, use current date as fallback
         if not publish_date:
-            print(f"⚠️  Skipping '{title}' - no publish date available")
-            return None
+            publish_date = datetime.utcnow().isoformat()
+            print(f"⚠️  Using current date for '{title}' - no publish date available")
         
         web_url = post.get('web_url', '#')
         
