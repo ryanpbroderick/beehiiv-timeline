@@ -199,7 +199,15 @@ def process_article(post: Dict) -> Optional[Dict]:
         beehiiv_id = post['id']
         title = post.get('title', 'Untitled')
         content = post.get('content_html', '') or post.get('content', '')
-        publish_date = post.get('published_at') or post.get('created_at')
+        
+        # Handle missing publish_date with fallback
+        publish_date = post.get('published_at') or post.get('created_at') or post.get('updated_at')
+        
+        # If still no date, skip this article
+        if not publish_date:
+            print(f"⚠️  Skipping '{title}' - no publish date available")
+            return None
+        
         web_url = post.get('web_url', '#')
         
         print(f"\nAnalyzing: {title}")
