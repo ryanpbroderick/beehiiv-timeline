@@ -33,21 +33,55 @@ TOPICS = ['tech', 'memes', 'politics', 'entertainment']
 
 
 def fetch_beehiiv_posts(limit: int = 100, page: int = 1) -> Dict:
-    """Fetch posts from Beehiiv API"""
+    """Fetch posts from Beehiiv API with improved error handling"""
     url = f"https://api.beehiiv.com/v2/publications/{BEEHIIV_PUBLICATION_ID}/posts"
     headers = {
         "Authorization": f"Bearer {BEEHIIV_API_KEY}",
         "Content-Type": "application/json"
     }
-    params = {
-        "status": "confirmed",
-        "limit": limit,
-        "page": page
-    }
     
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
-    return response.json()
+    # Try different parameter combinations
+    param_sets = [
+        # Try without status filter first
+        {
+            "limit": limit,
+            "page": page
+        },
+        # Try with published status
+        {
+            "status": "published",
+            "limit": limit,
+            "page": page
+        },
+        # Try with confirmed status
+        {
+            "status": "confirmed",
+            "limit": limit,
+            "page": page
+        }
+    ]
+    
+    last_error = None
+    
+    for params in param_sets:
+        try:
+            print(f"Trying API call with params: {params}")
+            response = requests.get(url, headers=headers, params=params)
+            
+            if response.status_code == 200:
+                print(f"✓ Success with params: {params}")
+                return response.json()
+            else:
+                last_error = f"{response.status_code}: {response.text}"
+                print(f"✗ Failed with params {params}: {last_error}")
+                
+        except Exception as e:
+            last_error = str(e)
+            print(f"✗ Exception with params {params}: {last_error}")
+            continue
+    
+    # If all attempts failed, raise the last error
+    raise Exception(f"All API attempts failed. Last error: {last_error}")
 
 
 def analyze_article_with_ai(title: str, content: str, publish_date: str) -> Dict:
@@ -195,6 +229,8 @@ def process_article(post: Dict) -> Optional[Dict]:
 def import_all_posts():
     """Import and process all posts from Beehiiv"""
     print("Starting Beehiiv import...")
+    print(f"Using Publication ID: {BEEHIIV_PUBLICATION_ID}")
+    print(f"API Key present: {'Yes' if BEEHIIV_API_KEY else 'No'}")
     
     page = 1
     total_processed = 0
@@ -210,6 +246,8 @@ def import_all_posts():
                 print("No more posts to fetch")
                 break
             
+            print(f"Found {len(posts)} posts on page {page}")
+            
             for post in posts:
                 article_data = process_article(post)
                 if article_data:
@@ -218,6 +256,7 @@ def import_all_posts():
             
             # Check if there are more pages
             if not response.get('pagination', {}).get('next_page'):
+                print("No more pages available")
                 break
                 
             page += 1
