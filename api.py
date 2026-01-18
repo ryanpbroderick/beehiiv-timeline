@@ -49,3 +49,22 @@ def health():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
+```
+
+### 2. **Procfile**
+- Edit this file
+- Replace content with:
+```
+web: python api.py
+```
+
+### 3. **requirements.txt**
+- Edit this file
+- Replace content with:
+```
+requests==2.31.0
+supabase==2.9.0
+openai==1.12.0
+python-dotenv==1.0.1
+flask==3.0.0
+flask-cors==4.0.0
