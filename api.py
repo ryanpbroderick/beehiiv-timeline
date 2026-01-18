@@ -6,18 +6,15 @@ from supabase import create_client, Client
 app = Flask(__name__)
 CORS(app)
 
-# Initialize Supabase
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @app.route('/api/articles')
 def get_articles():
-    """Fetch all articles for the timeline"""
     try:
         result = supabase.table('articles').select('*').order('publish_date', desc=False).execute()
         
-        # Transform data for frontend
         articles = []
         for article in result.data:
             articles.append({
@@ -43,28 +40,8 @@ def get_articles():
 
 @app.route('/api/health')
 def health():
-    """Health check endpoint"""
     return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
-```
-
-### 2. **Procfile**
-- Edit this file
-- Replace content with:
-```
-web: python api.py
-```
-
-### 3. **requirements.txt**
-- Edit this file
-- Replace content with:
-```
-requests==2.31.0
-supabase==2.9.0
-openai==1.12.0
-python-dotenv==1.0.1
-flask==3.0.0
-flask-cors==4.0.0
