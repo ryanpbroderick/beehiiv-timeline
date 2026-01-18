@@ -1,1 +1,1 @@
-   worker: echo "Ready to run import command"
+   web: python app.py import
