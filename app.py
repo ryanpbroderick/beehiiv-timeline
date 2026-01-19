@@ -144,7 +144,7 @@ OTHER RULES:
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are an expert at analyzing internet culture and history content. Always respond with valid JSON only."},
                 {"role": "user", "content": prompt}
