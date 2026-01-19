@@ -108,7 +108,7 @@ Content: {clean_content}
 Please respond with ONLY a JSON object (no markdown, no explanation) with this structure:
 {{
   "periods": ["period-id", ...],
-  "pull_quote": "best 1-2 sentence quote from the article",
+  "pull_quote": "exact verbatim quote from the article",
   "topics": ["topic-id", ...]
 }}
 
@@ -127,11 +127,24 @@ Topics to choose from (can select multiple):
 - "politics" - political events, movements, elections
 - "entertainment" - TV, movies, music, celebrities
 
-Rules:
+CRITICAL RULES FOR PULL QUOTES - READ CAREFULLY:
+1. The pull_quote MUST be copied WORD-FOR-WORD, VERBATIM from the article text above
+2. Do NOT paraphrase, summarize, rewrite, or create new text
+3. Find an actual sentence or two that appears in the Content section and copy it exactly as written
+4. Choose quotes that are SPECIFIC and CONCRETE with names, events, or vivid details
+5. AVOID generic statements - prefer quotes with proper nouns, specific examples, or striking observations
+6. Maximum 2 sentences
+7. If you write ANYTHING that is not a direct copy from the article text, you have failed this task
+
+Good process:
+- Read through the Content above
+- Identify 2-3 sentences that are punchy, specific, and quotable
+- Copy one of them EXACTLY as it appears, with no changes
+
+OTHER RULES:
 1. Select periods based on what time periods the article DISCUSSES, not when it was published
-2. The pull_quote must be an actual quote from the article text, 1-2 sentences max
-3. Select all relevant topics that apply
-4. If unclear about period, choose the most prominent one mentioned"""
+2. Select all relevant topics that apply
+3. If unclear about period, choose the most prominent one mentioned"""
 
     try:
         response = openai_client.chat.completions.create(
