@@ -277,10 +277,17 @@ HARD RULES:
 
         result_text = response.choices[0].message.content.strip()
         result_text = re.sub(r'^```json\s*|\s*```$', '', result_text, flags=re.MULTILINE)
+        
+        # Debug: show what we got
+        print(f"📥 AI returned {len(result_text)} chars")
+        
         raw = json.loads(result_text)
-
+        
         raw_cards = _safe_list(raw.get('cards'))
+        print(f"📦 Parsed {len(raw_cards)} raw cards from AI")
+        
         cards = validate_cards(raw_cards, clean_content)
+        print(f"✅ After validation: {len(cards)} cards kept")
 
         # Topics: keep within your existing controlled list.
         topics = [t for t in _safe_list(raw.get('topics')) if t in TOPICS]
@@ -311,7 +318,10 @@ HARD RULES:
         }
 
     except Exception as e:
-        print(f"Error analyzing article: {e}")
+        print(f"❌ Error analyzing article: {e}")
+        print(f"   Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return {
             'cards': [],
             'periods': ['early-2020s'],
@@ -435,7 +445,7 @@ def process_article(post: Dict) -> Optional[Dict]:
         return None
 
 
-def import_all_posts(max_issues=None):
+def import_all_posts():
     """Import and process all posts from Beehiiv"""
     print("Starting Beehiiv import...")
     print(f"Using Publication ID: {BEEHIIV_PUBLICATION_ID}")
