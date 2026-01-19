@@ -382,15 +382,16 @@ def process_article(post: Dict) -> Optional[Dict]:
         title = post.get("title", "Untitled")
 
         content = post.get("content") or post.get("content_html") or post.get("preview_text") or ""
-if isinstance(content, dict):
-    content = content.get("html") or content.get("text") or ""
+        if isinstance(content, dict):
+            content = content.get("html") or content.get("text") or ""
 
-print("CONTENT LENGTH:", len(content))
+        print("CONTENT LENGTH:", len(content) if isinstance(content, str) else len(str(content)))
 
-if len(content) < 800:
-    content = post.get("text") or post.get("content_text") or post.get("subtitle") or content
-    print("FALLBACK CONTENT LENGTH:", len(content))
-
+        if isinstance(content, str) and len(content) < 800:
+            content = post.get("text") or post.get("content_text") or post.get("subtitle") or content
+            if isinstance(content, dict):
+                content = content.get("html") or content.get("text") or ""
+            print("FALLBACK CONTENT LENGTH:", len(content) if isinstance(content, str) else len(str(content)))
 
         publish_date = post.get("published_at") or post.get("created_at") or post.get("updated_at")
         if not publish_date:
@@ -419,6 +420,7 @@ if len(content) < 800:
     except Exception as e:
         print(f"Error processing article {post.get('id')}: {e}")
         return None
+
 
 
 
