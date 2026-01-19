@@ -102,13 +102,12 @@ def analyze_article_with_ai(title: str, content: str, publish_date: str) -> Dict
     prompt = f"""Analyze this newsletter article and extract the following information:
 
 Title: {title}
-Published: {publish_date}
 Content: {clean_content}
 
 Please respond with ONLY a JSON object (no markdown, no explanation) with this structure:
 {{
   "periods": ["period-id", ...],
-  "pull_quote": "exact verbatim quote from the article",
+  "event_summary": "brief factual summary of the event/trend/topic",
   "topics": ["topic-id", ...]
 }}
 
@@ -127,24 +126,21 @@ Topics to choose from (can select multiple):
 - "politics" - political events, movements, elections
 - "entertainment" - TV, movies, music, celebrities
 
-CRITICAL RULES FOR PULL QUOTES - READ CAREFULLY:
-1. The pull_quote MUST be copied WORD-FOR-WORD, VERBATIM from the article text above
-2. Do NOT paraphrase, summarize, rewrite, or create new text
-3. Find an actual sentence or two that appears in the Content section and copy it exactly as written
-4. Choose quotes that are SPECIFIC and CONCRETE with names, events, or vivid details
-5. AVOID generic statements - prefer quotes with proper nouns, specific examples, or striking observations
-6. Maximum 2 sentences
-7. If you write ANYTHING that is not a direct copy from the article text, you have failed this task
-
-Good process:
-- Read through the Content above
-- Identify 2-3 sentences that are punchy, specific, and quotable
-- Copy one of them EXACTLY as it appears, with no changes
+RULES FOR EVENT SUMMARY:
+1. Write a brief, factual, matter-of-fact description of the news event, trend, meme, or political development discussed
+2. Keep it to 1-2 sentences maximum
+3. Focus on WHAT happened, WHEN it happened, and WHO was involved
+4. Be specific with names, platforms, dates, and concrete details
+5. Write in past tense as if describing a historical event
+6. Examples of good summaries:
+   - "Vine, the six-second video platform, shut down in January 2017 despite its cultural influence on internet humor"
+   - "MySpace launched in August 2003 and popularized the concept of customizable social media profiles with HTML and top 8 friends"
+   - "The Tumblr adult content ban went into effect in December 2018, fundamentally changing the platform's user base"
 
 OTHER RULES:
-1. Select periods based on what time periods the article DISCUSSES, not when it was published
+1. Select periods based on WHEN the event happened, not when the article was published
 2. Select all relevant topics that apply
-3. If unclear about period, choose the most prominent one mentioned"""
+3. Can select multiple periods if the article discusses events across different eras"""
 
     try:
         response = openai_client.chat.completions.create(
@@ -169,9 +165,9 @@ OTHER RULES:
             result['periods'] = ['late-2010s']  # default
         if not isinstance(result.get('topics'), list) or not result['topics']:
             result['topics'] = ['tech']  # default
-        if not result.get('pull_quote'):
+        if not result.get('event_summary'):
             # Fallback: use first 200 chars of clean content
-            result['pull_quote'] = clean_content[:200] + "..."
+            result['event_summary'] = clean_content[:200] + "..."
             
         return result
         
@@ -180,7 +176,7 @@ OTHER RULES:
         # Return safe defaults
         return {
             "periods": ["late-2010s"],
-            "pull_quote": clean_content[:200] + "..." if clean_content else "...",
+            "event_summary": clean_content[:200] + "..." if clean_content else "...",
             "topics": ["tech"]
         }
 
@@ -234,7 +230,7 @@ def process_article(post: Dict) -> Optional[Dict]:
             'title': title,
             'publish_date': publish_date,
             'url': web_url,
-            'pull_quote': analysis['pull_quote'],
+            'pull_quote': analysis['event_summary'],  # Store as pull_quote in DB for compatibility
             'periods': analysis['periods'],
             'topics': analysis['topics'],
             'processed_at': datetime.utcnow().isoformat()
