@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Connections</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">◎</div>
+      <div class="title">Connections</div>
+    </div>
+    <div class="actions">
+      <input id="q" type="search" placeholder="Search claims, tags, people…" autocomplete="off" />
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="status" id="status">Loading cards…</div>
+    <section class="cards" id="cards"></section>
+  </main>
+
+  <template id="cardTmpl">
+    <article class="card">
+      <div class="card__claim"></div>
+      <div class="pills"></div>
+      <div class="meta">
+        <div class="meta__item"><div class="label">Then</div><div class="value then"></div></div>
+        <div class="meta__item"><div class="label">Issue</div><div class="value issue"></div></div>
+      </div>
+      <details class="evidence">
+        <summary class="evidence__sum"></summary>
+        <ul class="evidence__list"></ul>
+      </details>
+      <a class="issueLink" target="_blank" rel="noopener">Open issue →</a>
+    </article>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
