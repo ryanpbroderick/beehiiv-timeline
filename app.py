@@ -52,10 +52,15 @@ def fetch_beehiiv_posts(limit: int = 50, page: int = 1) -> Dict:
 def strip_html(html: str) -> str:
     if not html:
         return ""
-    # very simple tag strip (good enough for extraction)
+    # Convert block-ish tags into newlines so we preserve structure
+    html = re.sub(r"</(p|div|br|li|h1|h2|h3|h4|h5|blockquote)>", "\n\n", html, flags=re.IGNORECASE)
+    html = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+    # Strip remaining tags
     text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    # Normalize spaces but keep newlines
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def normalize_paragraphs(text: str) -> List[str]:
@@ -97,19 +102,18 @@ def normalize_paragraphs(text: str) -> List[str]:
 # =========================
 # CARD EXTRACTION (NO AI)
 # =========================
-def extract_year_cards(text: str, max_cards: int = 25) -> List[Dict]:
-    """
-    Any paragraph containing a year becomes a card.
-    Cards are anchored to the first year found in the paragraph.
-    """
-    paras = normalize_paragraphs(text)
+SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+def extract_year_cards(text: str, max_cards: int = 40) -> List[Dict]:
+    if not text:
+        return []
+
+    # Split into sentences (works even if the whole issue is one blob)
+    sentences = [s.strip() for s in SENT_SPLIT_RE.split(text) if s and len(s.strip()) > 40]
+
     cards: List[Dict] = []
-
-    for p in paras:
-        if len(p) < 80:
-            continue
-
-        m = YEAR_RE.search(p)
+    for s in sentences:
+        m = YEAR_RE.search(s)
         if not m:
             continue
 
@@ -117,19 +121,20 @@ def extract_year_cards(text: str, max_cards: int = 25) -> List[Dict]:
         if year < YEAR_MIN or year > YEAR_MAX:
             continue
 
-        excerpt = p[:260] + ("…" if len(p) > 260 else "")
+        excerpt = s[:260] + ("…" if len(s) > 260 else "")
 
         cards.append({
             "year_start": year,
             "year_end": None,
             "excerpt": excerpt,
-            "context": p,
+            "context": s,
         })
 
         if len(cards) >= max_cards:
             break
 
     return cards
+
 
 
 # =========================
@@ -223,6 +228,8 @@ def process_article(post: Dict) -> Optional[Dict]:
 
         # If it's HTML, strip it. If it's already plain text, strip_html is harmless.
         clean_content = strip_html(content)
+        print("HAS YEAR:", bool(YEAR_RE.search(clean_content)), "CONTENT LENGTH:", len(clean_content))
+
 
         publish_date = post.get("published_at") or post.get("created_at") or post.get("updated_at")
         if not publish_date:
