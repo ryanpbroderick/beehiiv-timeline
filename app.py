@@ -42,15 +42,26 @@ CONNECTION_PHRASES = [
 
 # Common entities to extract
 PLATFORMS = [
-    'Facebook', 'Twitter', 'Instagram', 'TikTok', 'YouTube', 'Snapchat',
+    'Facebook', 'Twitter', 'X', 'Instagram', 'TikTok', 'YouTube', 'Snapchat',
     'Reddit', 'Tumblr', 'MySpace', 'Vine', 'Discord', 'Telegram',
-    'WhatsApp', 'LinkedIn', 'Pinterest', 'Twitch', 'BeReal',
-    'Substack', 'Medium', 'WordPress', 'Patreon'
+    'WhatsApp', 'LinkedIn', 'Pinterest', 'Twitch', 'BeReal', 'Threads',
+    'Substack', 'Medium', 'WordPress', 'Patreon', 'OnlyFans',
+    'Spotify', 'Netflix', 'Hulu', 'Amazon Prime', 'Disney+',
+    'ChatGPT', 'Claude', 'Bard', 'Gemini'
 ]
 
 COMPANIES = [
     'Google', 'Meta', 'Microsoft', 'Apple', 'Amazon', 'Netflix',
-    'Tesla', 'OpenAI', 'Anthropic', 'Adobe', 'Oracle', 'Salesforce'
+    'Tesla', 'OpenAI', 'Anthropic', 'Adobe', 'Oracle', 'Salesforce',
+    'Uber', 'Lyft', 'Airbnb', 'SpaceX', 'ByteDance', 'Tencent',
+    'Bluesky', 'Mastodon'
+]
+
+PEOPLE = [
+    'Elon Musk', 'Mark Zuckerberg', 'Jeff Bezos', 'Tim Cook',
+    'Sam Altman', 'Sundar Pichai', 'Satya Nadella',
+    'Trump', 'Biden', 'Obama', 'Clinton', 'Bush',
+    'Taylor Swift', 'Beyoncé', 'Kim Kardashian'
 ]
 
 
@@ -134,16 +145,20 @@ def extract_entities(text: str) -> List[str]:
         if company in text:
             entities.add(company)
     
+    for person in PEOPLE:
+        if person in text:
+            entities.add(person)
+    
     # Extract capitalized words (potential entities)
     # Match words that start with capital and have 3+ chars
     caps = re.findall(r'\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)*\b', text)
     for cap in caps:
-        # Filter out common words
-        if cap.lower() not in ['the', 'this', 'that', 'these', 'those', 'when', 'where']:
-            if len(cap) > 3:  # Skip very short words
+        # Filter out common words and short names
+        if cap.lower() not in ['the', 'this', 'that', 'these', 'those', 'when', 'where', 'what', 'which']:
+            if len(cap) >= 3:
                 entities.add(cap)
     
-    return sorted(list(entities))[:10]  # Limit to 10 tags
+    return sorted(list(entities))[:15]  # Increase to 15 tags
 
 
 def get_context_paragraph(text: str, sentence: str) -> str:
@@ -167,24 +182,37 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
     card_index = 0
     
     for sentence in sentences:
-        # Skip if sentence is too short or too long
-        if len(sentence) < 30 or len(sentence) > 500:
+        # Skip if sentence is too short
+        if len(sentence) < 40:
             continue
         
-        # Check if sentence has temporal reference or connection phrase
-        has_temporal = has_temporal_reference(sentence)
-        has_connection = has_connection_phrase(sentence)
-        
-        if not (has_temporal or has_connection):
+        # Skip if sentence is way too long (likely not a good card)
+        if len(sentence) > 400:
             continue
         
         # Extract years from sentence
         years = extract_years(sentence)
         
+        # Extract entities
+        entities = extract_entities(sentence)
+        
+        # Be MUCH more lenient - create card if:
+        # 1. Has any year, OR
+        # 2. Has 2+ entities (platforms/companies/people), OR
+        # 3. Has temporal/connection phrases
+        has_year = len(years) > 0
+        has_entities = len(entities) >= 2
+        has_temporal = has_temporal_reference(sentence)
+        has_connection = has_connection_phrase(sentence)
+        
+        # Create card if ANY of these are true
+        if not (has_year or has_entities or has_temporal or has_connection):
+            continue
+        
         # Get surrounding context
         context = get_context_paragraph(clean_text, sentence)
         
-        # Extract entities for tags
+        # Get all tags from context
         tags = extract_entities(context)
         
         # Determine timeline year (use earliest mentioned year, or None)
@@ -194,8 +222,8 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
         card = {
             'beehiiv_id': beehiiv_id,
             'card_index': card_index,
-            'title': sentence[:200],  # Truncate if too long
-            'body': context[:1000],  # Limit body size
+            'title': sentence[:250],  # Allow longer titles
+            'body': context[:1500],  # Allow longer bodies
             'timeline_year': timeline_year,
             'tags': tags,
             'issue_title': title,
@@ -206,8 +234,8 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
         cards.append(card)
         card_index += 1
         
-        # Limit to 10 cards per article
-        if card_index >= 10:
+        # Increase limit per article
+        if card_index >= 20:
             break
     
     return cards
