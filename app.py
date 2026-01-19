@@ -435,7 +435,7 @@ def process_article(post: Dict) -> Optional[Dict]:
         return None
 
 
-def import_all_posts():
+def import_all_posts(max_issues=None):
     """Import and process all posts from Beehiiv"""
     print("Starting Beehiiv import...")
     print(f"Using Publication ID: {BEEHIIV_PUBLICATION_ID}")
