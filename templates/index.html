@@ -1,43 +1,382 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Connections</title>
-  <link rel="stylesheet" href="/static/app.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Internet History Timeline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0e1a;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+    
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 26, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #1e293b;
+      padding: 16px 24px;
+    }
+    
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    
+    .status {
+      font-size: 14px;
+      color: #64748b;
+    }
+    
+    .timeline-container {
+      position: relative;
+      height: calc(100vh - 80px);
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 40px 0;
+    }
+    
+    .timeline {
+      position: relative;
+      height: 100%;
+      min-width: 3600px; /* 36 years × 100px */
+      padding: 0 100px;
+    }
+    
+    /* Timeline axis */
+    .timeline-axis {
+      position: absolute;
+      top: 50%;
+      left: 100px;
+      right: 100px;
+      height: 2px;
+      background: linear-gradient(90deg, 
+        #3b82f6 0%, 
+        #8b5cf6 50%, 
+        #ec4899 100%
+      );
+    }
+    
+    /* Year markers */
+    .year-markers {
+      position: absolute;
+      top: 50%;
+      left: 100px;
+      right: 100px;
+      height: 40px;
+      transform: translateY(-50%);
+    }
+    
+    .year-marker {
+      position: absolute;
+      transform: translateX(-50%);
+    }
+    
+    .year-marker .tick {
+      width: 2px;
+      height: 20px;
+      background: #475569;
+      margin: 0 auto;
+    }
+    
+    .year-marker .label {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #94a3b8;
+      white-space: nowrap;
+      text-align: center;
+    }
+    
+    /* Cards */
+    .cards {
+      position: relative;
+      height: 100%;
+    }
+    
+    .card {
+      position: absolute;
+      width: 280px;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .card:hover {
+      transform: translateY(-8px) scale(1.02);
+      border-color: #3b82f6;
+      box-shadow: 0 20px 40px rgba(59, 130, 246, 0.3);
+      z-index: 10;
+    }
+    
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 12px;
+      color: #f1f5f9;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .card-body {
+      font-size: 12px;
+      line-height: 1.6;
+      color: #94a3b8;
+      margin-bottom: 12px;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+    
+    .tag {
+      font-size: 10px;
+      padding: 4px 8px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 4px;
+      color: #60a5fa;
+    }
+    
+    .card-footer {
+      font-size: 11px;
+      color: #64748b;
+      padding-top: 12px;
+      border-top: 1px solid #1e293b;
+    }
+    
+    .card-issue {
+      text-decoration: none;
+      color: #3b82f6;
+      transition: color 0.2s;
+    }
+    
+    .card-issue:hover {
+      color: #60a5fa;
+    }
+    
+    /* Loading */
+    .loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+    
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid #1e293b;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Scroll hint */
+    .scroll-hint {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 20px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #60a5fa;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo" aria-hidden="true">◎</div>
-      <div class="title">Connections</div>
+  <div class="header">
+    <h1>Internet History Timeline</h1>
+    <div class="status" id="status">Loading...</div>
+  </div>
+  
+  <div class="timeline-container" id="timelineContainer">
+    <div class="timeline" id="timeline">
+      <div class="timeline-axis"></div>
+      <div class="year-markers" id="yearMarkers"></div>
+      <div class="cards" id="cards"></div>
     </div>
-    <div class="actions">
-      <input id="q" type="search" placeholder="Search claims, tags, people…" autocomplete="off" />
-    </div>
-  </header>
+  </div>
+  
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>Loading cards...</div>
+  </div>
+  
+  <div class="scroll-hint" id="scrollHint">← Scroll horizontally →</div>
 
-  <main class="container">
-    <div class="status" id="status">Loading cards…</div>
-    <section class="cards" id="cards"></section>
-  </main>
-
-  <template id="cardTmpl">
-    <article class="card">
-      <div class="card__claim"></div>
-      <div class="pills"></div>
-      <div class="meta">
-        <div class="meta__item"><div class="label">Then</div><div class="value then"></div></div>
-        <div class="meta__item"><div class="label">Issue</div><div class="value issue"></div></div>
-      </div>
-      <details class="evidence">
-        <summary class="evidence__sum"></summary>
-        <ul class="evidence__list"></ul>
-      </details>
-      <a class="issueLink" target="_blank" rel="noopener">Open issue →</a>
-    </article>
-  </template>
-
-  <script src="/static/app.js"></script>
+  <script>
+    const START_YEAR = 1990;
+    const END_YEAR = 2025;
+    const PIXELS_PER_YEAR = 100;
+    const CARD_WIDTH = 280;
+    const CARD_SPACING = 20;
+    
+    function yearToX(year) {
+      return (year - START_YEAR) * PIXELS_PER_YEAR;
+    }
+    
+    function createYearMarkers() {
+      const container = document.getElementById('yearMarkers');
+      
+      for (let year = START_YEAR; year <= END_YEAR; year += 5) {
+        const marker = document.createElement('div');
+        marker.className = 'year-marker';
+        marker.style.left = yearToX(year) + 'px';
+        
+        marker.innerHTML = `
+          <div class="tick"></div>
+          <div class="label">${year}</div>
+        `;
+        
+        container.appendChild(marker);
+      }
+    }
+    
+    function layoutCards(cards) {
+      // Group cards by year
+      const cardsByYear = {};
+      const noYearCards = [];
+      
+      cards.forEach(card => {
+        if (card.timeline_year) {
+          const year = card.timeline_year;
+          if (!cardsByYear[year]) cardsByYear[year] = [];
+          cardsByYear[year].push(card);
+        } else {
+          noYearCards.push(card);
+        }
+      });
+      
+      const container = document.getElementById('cards');
+      const centerY = container.parentElement.offsetHeight / 2;
+      
+      // Place cards with years
+      Object.keys(cardsByYear).sort((a, b) => a - b).forEach(year => {
+        const yearCards = cardsByYear[year];
+        const x = yearToX(parseInt(year));
+        
+        yearCards.forEach((card, index) => {
+          const cardEl = createCardElement(card);
+          
+          // Alternate above/below the timeline
+          const row = Math.floor(index / 2);
+          const side = index % 2 === 0 ? -1 : 1;
+          const y = centerY + (side * (150 + row * 200));
+          
+          cardEl.style.left = (x - CARD_WIDTH / 2) + 'px';
+          cardEl.style.top = y + 'px';
+          
+          container.appendChild(cardEl);
+        });
+      });
+      
+      // Place cards without years at the end
+      let noYearX = yearToX(END_YEAR) + 200;
+      noYearCards.forEach((card, index) => {
+        const cardEl = createCardElement(card);
+        const row = Math.floor(index / 3);
+        const col = index % 3;
+        
+        cardEl.style.left = (noYearX + col * (CARD_WIDTH + CARD_SPACING)) + 'px';
+        cardEl.style.top = (centerY - 300 + row * 220) + 'px';
+        
+        container.appendChild(cardEl);
+      });
+    }
+    
+    function createCardElement(card) {
+      const el = document.createElement('div');
+      el.className = 'card';
+      
+      const tags = (card.tags || []).slice(0, 5).map(tag => 
+        `<span class="tag">${tag}</span>`
+      ).join('');
+      
+      el.innerHTML = `
+        <div class="card-title">${card.title || ''}</div>
+        <div class="card-body">${card.body || ''}</div>
+        ${tags ? `<div class="card-tags">${tags}</div>` : ''}
+        <div class="card-footer">
+          <a href="${card.issue_url || '#'}" target="_blank" class="card-issue">
+            ${card.issue_title || 'View issue'} →
+          </a>
+        </div>
+      `;
+      
+      return el;
+    }
+    
+    async function loadCards() {
+      try {
+        const response = await fetch('/api/cards');
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load cards');
+        }
+        
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('status').textContent = `${data.total} cards`;
+        
+        if (data.total === 0) {
+          document.getElementById('status').textContent = 'No cards yet. Visit /api/run-import to generate.';
+          document.getElementById('scrollHint').style.display = 'none';
+          return;
+        }
+        
+        createYearMarkers();
+        layoutCards(data.cards);
+        
+        // Hide scroll hint after 5 seconds
+        setTimeout(() => {
+          document.getElementById('scrollHint').style.opacity = '0';
+          setTimeout(() => {
+            document.getElementById('scrollHint').style.display = 'none';
+          }, 500);
+        }, 5000);
+        
+      } catch (error) {
+        document.getElementById('loading').innerHTML = `
+          <div style="color: #ef4444;">Error: ${error.message}</div>
+        `;
+      }
+    }
+    
+    loadCards();
+  </script>
 </body>
 </html>
