@@ -138,13 +138,18 @@ def validate_cards(cards: List[Dict], clean_content: str) -> List[Dict]:
 
     ok: List[Dict] = []
     haystack = clean_content
+    dropped_count = 0
 
     for c in _safe_list(cards):
         if not isinstance(c, dict):
+            dropped_count += 1
+            print(f"⚠️  Dropped card: not a dict")
             continue
 
         claim = _normalize_whitespace(c.get('claim'))
         if not claim or len(claim) < 12 or len(claim) > 220:
+            dropped_count += 1
+            print(f"⚠️  Dropped card: claim invalid (len={len(claim) if claim else 0})")
             continue
 
         evidence = _safe_list(c.get('evidence'))
@@ -156,8 +161,13 @@ def validate_cards(cards: List[Dict], clean_content: str) -> List[Dict]:
                 q = _normalize_whitespace(e)
             if q and q in haystack:
                 evidence_quotes.append(q)
+            elif q:
+                # Debug: show first 100 chars of failed quote
+                print(f"⚠️  Quote not found in article: '{q[:100]}...'")
 
         if len(evidence_quotes) == 0:
+            dropped_count += 1
+            print(f"⚠️  Dropped card: no valid evidence quotes (claim='{claim[:60]}...')")
             continue
 
         # link type
@@ -193,6 +203,9 @@ def validate_cards(cards: List[Dict], clean_content: str) -> List[Dict]:
             'confidence': float(c.get('confidence', 0.75)) if str(c.get('confidence', '')).replace('.', '', 1).isdigit() else 0.75
         })
 
+    if dropped_count > 0:
+        print(f"✅ Validated {len(ok)} cards, dropped {dropped_count} cards")
+    
     # cap per issue
     return ok[:6]
 
@@ -422,27 +435,16 @@ def process_article(post: Dict) -> Optional[Dict]:
         return None
 
 
-def import_all_posts(max_issues=None):
-    """Import and process posts from Beehiiv
-    
-    Args:
-        max_issues: Maximum number of issues to process (None = all)
-    """
+def import_all_posts():
+    """Import and process all posts from Beehiiv"""
     print("Starting Beehiiv import...")
     print(f"Using Publication ID: {BEEHIIV_PUBLICATION_ID}")
     print(f"API Key present: {'Yes' if BEEHIIV_API_KEY else 'No'}")
-    if max_issues:
-        print(f"⚠️  Test mode: Processing max {max_issues} issues")
     
     page = 1
     total_processed = 0
     
     while True:
-        # Stop if we've hit the max
-        if max_issues and total_processed >= max_issues:
-            print(f"\n⚠️  Reached test limit of {max_issues} issues")
-            break
-            
         print(f"\nFetching page {page}...")
         
         try:
@@ -456,10 +458,6 @@ def import_all_posts(max_issues=None):
             print(f"Found {len(posts)} posts on page {page}")
             
             for post in posts:
-                # Stop if we've hit the max
-                if max_issues and total_processed >= max_issues:
-                    break
-                    
                 article_data = process_article(post)
                 if article_data:
                     if store_article(article_data):
