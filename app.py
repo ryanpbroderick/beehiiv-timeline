@@ -2,7 +2,7 @@ import os
 import json
 import re
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import requests
 from supabase import create_client, Client
 from openai import OpenAI
@@ -30,6 +30,18 @@ PERIOD_MAP = {
 }
 
 TOPICS = ['tech', 'memes', 'politics', 'entertainment']
+
+# "Connection card" link types. Keep this short + stable.
+LINK_TYPES = [
+    "recurrence",
+    "inversion",
+    "tactic-transfer",
+    "regulatory-echo",
+    "platform-lifecycle",
+    "narrative-laundering",
+    "rebranding",
+    "capability-jump",
+]
 
 
 def fetch_beehiiv_posts(limit: int = 100, page: int = 1) -> Dict:
@@ -84,106 +96,223 @@ def fetch_beehiiv_posts(limit: int = 100, page: int = 1) -> Dict:
     raise Exception(f"All API attempts failed. Last error: {last_error}")
 
 
+def _strip_html(content: str) -> str:
+    return re.sub(r'<[^>]+>', '', content or '')
+
+
+def _normalize_whitespace(text: str) -> str:
+    return re.sub(r'\s+', ' ', (text or '')).strip()
+
+
+def _parse_year(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        s = str(value)
+        m = re.search(r'(19\d{2}|20\d{2})', s)
+        return int(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
+def _year_to_period_id(year: int) -> Optional[str]:
+    for pid, meta in PERIOD_MAP.items():
+        if meta['start'] <= year <= meta['end']:
+            return pid
+    return None
+
+
+def _safe_list(xs: Any) -> List[Any]:
+    return xs if isinstance(xs, list) else []
+
+
+def validate_cards(cards: List[Dict], clean_content: str) -> List[Dict]:
+    """Hard guardrails so we don't store hallucinated cards.
+
+    Rules:
+    - claim must exist and be short
+    - evidence must contain at least 1 verbatim quote present in clean_content
+    - then_range years must be sane if present
+    - link_type must be one of LINK_TYPES if present
+    """
+
+    ok: List[Dict] = []
+    haystack = clean_content
+
+    for c in _safe_list(cards):
+        if not isinstance(c, dict):
+            continue
+
+        claim = _normalize_whitespace(c.get('claim'))
+        if not claim or len(claim) < 12 or len(claim) > 220:
+            continue
+
+        evidence = _safe_list(c.get('evidence'))
+        evidence_quotes: List[str] = []
+        for e in evidence:
+            if isinstance(e, dict):
+                q = _normalize_whitespace(e.get('quote'))
+            else:
+                q = _normalize_whitespace(e)
+            if q and q in haystack:
+                evidence_quotes.append(q)
+
+        if len(evidence_quotes) == 0:
+            continue
+
+        # link type
+        link_type = c.get('link_type')
+        if link_type and link_type not in LINK_TYPES:
+            link_type = None
+
+        then_range = c.get('then_range')
+        then_start = None
+        then_end = None
+        if isinstance(then_range, dict):
+            then_start = _parse_year(then_range.get('start'))
+            then_end = _parse_year(then_range.get('end'))
+            if then_start and then_end and then_start > then_end:
+                then_start, then_end = then_end, then_start
+            # sanity: keep within 1990..2035
+            if then_start and not (1990 <= then_start <= 2035):
+                then_start = None
+            if then_end and not (1990 <= then_end <= 2035):
+                then_end = None
+
+        tags = [t for t in _safe_list(c.get('tags')) if isinstance(t, str) and 1 <= len(t) <= 40]
+        tags = tags[:10]
+
+        ok.append({
+            'claim': claim,
+            'then_start': then_start,
+            'then_end': then_end,
+            'now_label': _normalize_whitespace(c.get('now_label')) or None,
+            'link_type': link_type,
+            'tags': tags,
+            'evidence': [{'quote': q} for q in evidence_quotes[:4]],
+            'confidence': float(c.get('confidence', 0.75)) if str(c.get('confidence', '')).replace('.', '', 1).isdigit() else 0.75
+        })
+
+    # cap per issue
+    return ok[:6]
+
+
 def analyze_article_with_ai(title: str, content: str, publish_date: str) -> Dict:
-    """
-    Use OpenAI to analyze the article and extract:
-    - Time periods discussed
-    - Best pull quote
-    - Topic categories
-    """
-    
-    # Clean HTML tags from content
-    clean_content = re.sub(r'<[^>]+>', '', content)
-    
-    # Truncate if too long (to save tokens)
-    if len(clean_content) > 8000:
-        clean_content = clean_content[:8000] + "..."
-    
-    prompt = f"""Analyze this newsletter article and extract the following information:
+    """Generate a small set of evidence-locked cards + light metadata.
 
-Title: {title}
-Content: {clean_content}
+    This replaces the old "event_summary" approach with connection cards.
+    """
 
-Please respond with ONLY a JSON object (no markdown, no explanation) with this structure:
+    clean_content = _strip_html(content)
+    clean_content = _normalize_whitespace(clean_content)
+
+    # Keep enough context for evidence quotes while avoiding huge token bills.
+    # If you later add chunking, you can remove this truncation.
+    if len(clean_content) > 14000:
+        clean_content = clean_content[:14000]
+
+    system_msg = (
+        "You extract structured notes from journalism. "
+        "You MUST follow instructions and output VALID JSON only. "
+        "Do not invent facts. Do not paraphrase evidence: evidence quotes must be verbatim substrings of the provided text."
+    )
+
+    user_msg = f"""Create 2 to 6 'connection cards' from this newsletter issue.
+
+Each card captures a concrete, newsroom-useful insight (a claim) and includes evidence pulled verbatim from the article.
+
+ISSUE TITLE: {title}
+PUBLISHED_AT (may be missing/approx): {publish_date}
+
+ARTICLE TEXT (verbatim):
+{clean_content}
+
+Output ONLY JSON with this exact shape:
 {{
-  "periods": ["period-id", ...],
-  "event_summary": "brief factual summary of the event/trend/topic",
-  "topics": ["topic-id", ...]
+  "cards": [
+    {{
+      "claim": "One sentence, declarative. No hedging.",
+      "then_range": {{"start": 2010, "end": 2012, "label": "optional"}} | null,
+      "now_label": "Short label for the current trigger/event (optional)",
+      "link_type": "one of: {', '.join(LINK_TYPES)}" | null,
+      "tags": ["short tag", ...],
+      "evidence": [{{"quote": "VERBATIM QUOTE FROM ARTICLE"}}, ...],
+      "confidence": 0.0
+    }}, ...
+  ],
+  "topics": ["tech"|"memes"|"politics"|"entertainment", ...]
 }}
 
-Time periods to choose from (can select multiple):
-- "early-90s" (1990-1994)
-- "late-90s" (1995-1999)
-- "early-2000s" (2000-2004)
-- "late-2000s" (2005-2009)
-- "early-2010s" (2010-2014)
-- "late-2010s" (2015-2019)
-- "early-2020s" (2020-2029)
-
-Topics to choose from (can select multiple):
-- "tech" - anything about tech companies, platforms, apps
-- "memes" - internet trends, viral content, online culture
-- "politics" - political events, movements, elections
-- "entertainment" - TV, movies, music, celebrities
-
-RULES FOR EVENT SUMMARY:
-1. Write a brief, factual, matter-of-fact description of the news event, trend, meme, or political development discussed
-2. Keep it to 1-2 sentences maximum
-3. Focus on WHAT happened, WHEN it happened, and WHO was involved
-4. Be specific with names, platforms, dates, and concrete details
-5. Write in past tense as if describing a historical event
-6. Examples of good summaries:
-   - "Vine, the six-second video platform, shut down in January 2017 despite its cultural influence on internet humor"
-   - "MySpace launched in August 2003 and popularized the concept of customizable social media profiles with HTML and top 8 friends"
-   - "The Tumblr adult content ban went into effect in December 2018, fundamentally changing the platform's user base"
-
-OTHER RULES:
-1. Select periods based on WHEN the event happened, not when the article was published
-2. Select all relevant topics that apply
-3. Can select multiple periods if the article discusses events across different eras"""
+HARD RULES:
+1) Evidence quotes MUST be exact substrings of ARTICLE TEXT. If you can't find a quote, do not create the card.
+2) If the article does not explicitly reference a past time/event, set then_range = null.
+3) Prefer then_range as a YEAR or YEAR RANGE (1990-2035). If unsure, use null.
+4) Keep tags short. Prefer people, orgs, platforms, countries, and recurring concepts.
+5) Don't repeat near-duplicate cards.
+"""
 
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are an expert at analyzing internet culture and history content. Always respond with valid JSON only."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg}
             ],
-            temperature=0.3,
-            max_tokens=500
+            temperature=0.2,
+            max_tokens=900
         )
-        
+
         result_text = response.choices[0].message.content.strip()
-        
-        # Remove markdown code blocks if present
         result_text = re.sub(r'^```json\s*|\s*```$', '', result_text, flags=re.MULTILINE)
-        
-        result = json.loads(result_text)
-        
-        # Validate the response
-        if not isinstance(result.get('periods'), list) or not result['periods']:
-            result['periods'] = ['late-2010s']  # default
-        if not isinstance(result.get('topics'), list) or not result['topics']:
-            result['topics'] = ['tech']  # default
-        if not result.get('event_summary'):
-            # Fallback: use first 200 chars of clean content
-            result['event_summary'] = clean_content[:200] + "..."
-            
-        return result
-        
+        raw = json.loads(result_text)
+
+        raw_cards = _safe_list(raw.get('cards'))
+        cards = validate_cards(raw_cards, clean_content)
+
+        # Topics: keep within your existing controlled list.
+        topics = [t for t in _safe_list(raw.get('topics')) if t in TOPICS]
+        if not topics:
+            topics = ['tech']
+
+        # Derive periods from then_start/then_end across cards (for backwards compatibility with your frontend).
+        period_ids: List[str] = []
+        for c in cards:
+            ys = [y for y in [c.get('then_start'), c.get('then_end')] if isinstance(y, int)]
+            for y in ys:
+                pid = _year_to_period_id(y)
+                if pid and pid not in period_ids:
+                    period_ids.append(pid)
+
+        if not period_ids:
+            # fallback: assume recent era when no explicit then
+            period_ids = ['early-2020s']
+
+        # A tiny "pull quote" for legacy UI: prefer the first claim.
+        pull_quote = cards[0]['claim'] if cards else (clean_content[:200] + "...")
+
+        return {
+            'cards': cards,
+            'periods': period_ids,
+            'topics': topics,
+            'event_summary': pull_quote,
+        }
+
     except Exception as e:
         print(f"Error analyzing article: {e}")
-        # Return safe defaults
         return {
-            "periods": ["late-2010s"],
-            "event_summary": clean_content[:200] + "..." if clean_content else "...",
-            "topics": ["tech"]
+            'cards': [],
+            'periods': ['early-2020s'],
+            'topics': ['tech'],
+            'event_summary': clean_content[:200] + "..." if clean_content else "...",
         }
 
 
 def store_article(article_data: Dict) -> bool:
     """Store analyzed article in Supabase"""
     try:
+        # Cards are stored in a separate table; don't send unknown columns to the articles table.
+        cards = article_data.pop('_cards', None)
+
         # Check if article already exists
         existing = supabase.table('articles').select('id').eq('beehiiv_id', article_data['beehiiv_id']).execute()
         
@@ -196,9 +325,56 @@ def store_article(article_data: Dict) -> bool:
             supabase.table('articles').insert(article_data).execute()
             print(f"Stored new article: {article_data['title']}")
         
+        # Upsert cards after the article is stored.
+        if cards is not None:
+            store_cards(
+                beehiiv_id=article_data['beehiiv_id'],
+                publish_date=article_data.get('publish_date'),
+                title=article_data.get('title'),
+                url=article_data.get('url'),
+                cards=cards,
+            )
+
         return True
     except Exception as e:
         print(f"Error storing article: {e}")
+        return False
+
+
+def store_cards(beehiiv_id: str, publish_date: str, title: str, url: str, cards: List[Dict]) -> bool:
+    """Upsert cards for an issue into a `cards` table.
+
+    Expected schema is provided in the README snippet below (see assistant message).
+    """
+    try:
+        # If the table doesn't exist yet, this will throw and you'll see it in logs.
+        # We keep it simple: delete existing cards for this issue then insert.
+        supabase.table('cards').delete().eq('beehiiv_id', beehiiv_id).execute()
+
+        rows = []
+        for idx, c in enumerate(cards or []):
+            rows.append({
+                'beehiiv_id': beehiiv_id,
+                'card_index': idx,
+                'publish_date': publish_date,
+                'issue_title': title,
+                'issue_url': url,
+                'claim': c.get('claim'),
+                'then_start': c.get('then_start'),
+                'then_end': c.get('then_end'),
+                'now_label': c.get('now_label'),
+                'link_type': c.get('link_type'),
+                'tags': c.get('tags') or [],
+                'evidence': c.get('evidence') or [],
+                'confidence': c.get('confidence', 0.75),
+                'created_at': datetime.utcnow().isoformat(),
+            })
+
+        if rows:
+            supabase.table('cards').insert(rows).execute()
+        return True
+    except Exception as e:
+        print(f"Error storing cards: {e}")
         return False
 
 
@@ -235,6 +411,9 @@ def process_article(post: Dict) -> Optional[Dict]:
             'topics': analysis['topics'],
             'processed_at': datetime.utcnow().isoformat()
         }
+
+        # Cards are written to a separate table by store_article().
+        article_data['_cards'] = analysis.get('cards', [])
         
         return article_data
         
@@ -243,16 +422,27 @@ def process_article(post: Dict) -> Optional[Dict]:
         return None
 
 
-def import_all_posts():
-    """Import and process all posts from Beehiiv"""
+def import_all_posts(max_issues=None):
+    """Import and process posts from Beehiiv
+    
+    Args:
+        max_issues: Maximum number of issues to process (None = all)
+    """
     print("Starting Beehiiv import...")
     print(f"Using Publication ID: {BEEHIIV_PUBLICATION_ID}")
     print(f"API Key present: {'Yes' if BEEHIIV_API_KEY else 'No'}")
+    if max_issues:
+        print(f"⚠️  Test mode: Processing max {max_issues} issues")
     
     page = 1
     total_processed = 0
     
     while True:
+        # Stop if we've hit the max
+        if max_issues and total_processed >= max_issues:
+            print(f"\n⚠️  Reached test limit of {max_issues} issues")
+            break
+            
         print(f"\nFetching page {page}...")
         
         try:
@@ -266,6 +456,10 @@ def import_all_posts():
             print(f"Found {len(posts)} posts on page {page}")
             
             for post in posts:
+                # Stop if we've hit the max
+                if max_issues and total_processed >= max_issues:
+                    break
+                    
                 article_data = process_article(post)
                 if article_data:
                     if store_article(article_data):
