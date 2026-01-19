@@ -374,45 +374,41 @@ def store_cards(beehiiv_id: str, publish_date: str, title: str, url: str, cards:
 def process_article(post: Dict) -> Optional[Dict]:
     """Process a single Beehiiv post"""
     try:
-        beehiiv_id = post['id']
-        title = post.get('title', 'Untitled')
-content = post.get("content") or post.get("content_html") or post.get("preview_text") or ""
-if isinstance(content, dict):
-    content = content.get("html") or content.get("text") or ""
+        beehiiv_id = post["id"]
+        title = post.get("title", "Untitled")
 
-    print("CONTENT LENGTH:", len(content) if isinstance(content, str) else len(str(content)))
+        content = post.get("content") or post.get("content_html") or post.get("preview_text") or ""
+        if isinstance(content, dict):
+            content = content.get("html") or content.get("text") or ""
 
-
-        publish_date = post.get('published_at') or post.get('created_at') or post.get('updated_at')
-
+        publish_date = post.get("published_at") or post.get("created_at") or post.get("updated_at")
         if not publish_date:
             publish_date = datetime.utcnow().isoformat()
             print(f"⚠️  Using current date for '{title}' - no publish date available")
 
-        web_url = post.get('web_url', '#')
+        web_url = post.get("web_url", "#")
 
         print(f"\nAnalyzing: {title}")
-
         analysis = analyze_article_with_ai(title, content, publish_date)
 
         article_data = {
-            'beehiiv_id': beehiiv_id,
-            'title': title,
-            'publish_date': publish_date,
-            'url': web_url,
-            'pull_quote': analysis['event_summary'],
-            'periods': analysis['periods'],
-            'topics': analysis['topics'],
-            'processed_at': datetime.utcnow().isoformat()
+            "beehiiv_id": beehiiv_id,
+            "title": title,
+            "publish_date": publish_date,
+            "url": web_url,
+            "pull_quote": analysis["event_summary"],
+            "periods": analysis["periods"],
+            "topics": analysis["topics"],
+            "processed_at": datetime.utcnow().isoformat(),
         }
 
-        article_data['_cards'] = analysis.get('cards', [])
-
+        article_data["_cards"] = analysis.get("cards", [])
         return article_data
 
     except Exception as e:
         print(f"Error processing article {post.get('id')}: {e}")
         return None
+
 
 
 def import_all_posts(max_issues: Optional[int] = None, max_pages: Optional[int] = None, limit: int = 50, **kwargs) -> int:
