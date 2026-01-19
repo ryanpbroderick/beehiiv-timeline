@@ -240,8 +240,10 @@ Output ONLY JSON with this exact shape:
   "topics": ["tech"|"memes"|"politics"|"entertainment", ...]
 }}
 
+You MUST return at least 2 cards unless ARTICLE TEXT is under 500 characters.
+
 HARD RULES:
-1) Evidence quotes MUST be exact substrings of ARTICLE TEXT. If you can't find a quote, do not create the card.
+1) Evidence quotes MUST be copied exactly from ARTICLE TEXT. If necessary, select a full sentence or short paragraph. Do NOT paraphrase.
 2) If the article does not explicitly reference a past time/event, set then_range = null.
 3) Prefer then_range as a YEAR or YEAR RANGE (1990-2035). If unsure, use null.
 4) Keep tags short. Prefer people, orgs, platforms, countries, and recurring concepts.
@@ -265,6 +267,8 @@ HARD RULES:
         print(f"📥 AI returned {len(result_text)} chars")
 
         raw = json.loads(result_text)
+        print("RAW AI JSON:", raw)
+
 
         raw_cards = _safe_list(raw.get('cards'))
         print(f"📦 Parsed {len(raw_cards)} raw cards from AI")
@@ -378,8 +382,15 @@ def process_article(post: Dict) -> Optional[Dict]:
         title = post.get("title", "Untitled")
 
         content = post.get("content") or post.get("content_html") or post.get("preview_text") or ""
-        if isinstance(content, dict):
-            content = content.get("html") or content.get("text") or ""
+if isinstance(content, dict):
+    content = content.get("html") or content.get("text") or ""
+
+print("CONTENT LENGTH:", len(content))
+
+if len(content) < 800:
+    content = post.get("text") or post.get("content_text") or post.get("subtitle") or content
+    print("FALLBACK CONTENT LENGTH:", len(content))
+
 
         publish_date = post.get("published_at") or post.get("created_at") or post.get("updated_at")
         if not publish_date:
