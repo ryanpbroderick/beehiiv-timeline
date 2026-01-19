@@ -376,7 +376,10 @@ def process_article(post: Dict) -> Optional[Dict]:
     try:
         beehiiv_id = post['id']
         title = post.get('title', 'Untitled')
-        content = post.get('content_html', '') or post.get('content', '')
+content = post.get("content") or post.get("content_html") or post.get("preview_text") or ""
+if isinstance(content, dict):
+    content = content.get("html") or content.get("text") or ""
+    print("CONTENT LENGTH:", len(content))
 
         publish_date = post.get('published_at') or post.get('created_at') or post.get('updated_at')
 
