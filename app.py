@@ -178,10 +178,20 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
     clean_text = strip_html(content)
     sentences = extract_sentences(clean_text)
     
+    print(f"   📝 Found {len(sentences)} sentences")
+    print(f"   📏 Article length: {len(clean_text)} chars")
+    
+    # Debug: show first few sentences
+    if sentences:
+        print(f"   🔍 First sentence: {sentences[0][:100]}...")
+    
     cards = []
     card_index = 0
+    sentences_tested = 0
     
     for sentence in sentences:
+        sentences_tested += 1
+        
         # Skip if sentence is too short
         if len(sentence) < 40:
             continue
@@ -204,6 +214,10 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
         has_entities = len(entities) >= 2
         has_temporal = has_temporal_reference(sentence)
         has_connection = has_connection_phrase(sentence)
+        
+        # Debug first few sentences
+        if sentences_tested <= 3:
+            print(f"   📊 Sentence {sentences_tested}: year={has_year}, entities={len(entities)}, temporal={has_temporal}, connection={has_connection}")
         
         # Create card if ANY of these are true
         if not (has_year or has_entities or has_temporal or has_connection):
@@ -237,6 +251,8 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
         # Increase limit per article
         if card_index >= 20:
             break
+    
+    print(f"   ✅ Created {len(cards)} cards from {sentences_tested} sentences")
     
     return cards
 
