@@ -86,6 +86,29 @@ def fetch_beehiiv_posts(limit: int = 50, page: int = 1) -> Dict:
         raise
 
 
+def fetch_individual_post(post_id: str) -> Dict:
+    """Fetch individual post with full content"""
+    url = f"https://api.beehiiv.com/v2/posts/{post_id}"
+    headers = {
+        "Authorization": f"Bearer {BEEHIIV_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        print(f"      Fetching full content for post {post_id}...")
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            # The full post is in data['data']
+            return data.get('data', {})
+        else:
+            print(f"      ⚠️  Error fetching post: {response.status_code}")
+            return {}
+    except Exception as e:
+        print(f"      ⚠️  Exception fetching post: {e}")
+        return {}
+
+
 def strip_html(html: str) -> str:
     """Remove HTML tags"""
     return re.sub(r'<[^>]+>', '', html or '')
@@ -282,17 +305,26 @@ def process_article(post: Dict) -> int:
         beehiiv_id = post['id']
         title = post.get('title', 'Untitled')
         
-        # Debug: show all available fields
         print(f"\n📄 Processing: {title}")
-        print(f"   📋 Available fields: {list(post.keys())}")
+        
+        # Fetch full post content
+        full_post = fetch_individual_post(beehiiv_id)
+        
+        if not full_post:
+            print(f"   ⚠️  Could not fetch full post content")
+            return 0
+        
+        # Debug: show all available fields in full post
+        print(f"   📋 Full post fields: {list(full_post.keys())}")
         
         # Try different content fields
         content = (
-            post.get('content_html') or 
-            post.get('content') or 
-            post.get('web_content') or 
-            post.get('html_content') or 
-            post.get('body') or 
+            full_post.get('content_html') or 
+            full_post.get('content') or 
+            full_post.get('web_content') or 
+            full_post.get('html_content') or 
+            full_post.get('body') or 
+            full_post.get('content_free') or
             ''
         )
         
@@ -300,8 +332,8 @@ def process_article(post: Dict) -> int:
         if content:
             print(f"   🔍 Content preview: {content[:200]}...")
         
-        publish_date = post.get('published_at') or post.get('created_at') or datetime.utcnow().isoformat()
-        url = post.get('web_url', '#')
+        publish_date = full_post.get('published_at') or full_post.get('publish_date') or post.get('publish_date') or datetime.utcnow().isoformat()
+        url = full_post.get('web_url') or post.get('web_url', '#')
         
         # Extract cards
         cards = extract_cards_from_article(title, content, publish_date, url, beehiiv_id)
