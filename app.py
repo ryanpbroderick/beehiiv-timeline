@@ -281,16 +281,32 @@ def process_article(post: Dict) -> int:
     try:
         beehiiv_id = post['id']
         title = post.get('title', 'Untitled')
-        content = post.get('content_html', '') or post.get('content', '')
+        
+        # Debug: show all available fields
+        print(f"\n📄 Processing: {title}")
+        print(f"   📋 Available fields: {list(post.keys())}")
+        
+        # Try different content fields
+        content = (
+            post.get('content_html') or 
+            post.get('content') or 
+            post.get('web_content') or 
+            post.get('html_content') or 
+            post.get('body') or 
+            ''
+        )
+        
+        print(f"   📝 Content length: {len(content)} chars")
+        if content:
+            print(f"   🔍 Content preview: {content[:200]}...")
+        
         publish_date = post.get('published_at') or post.get('created_at') or datetime.utcnow().isoformat()
         url = post.get('web_url', '#')
-        
-        print(f"\n📄 Processing: {title}")
         
         # Extract cards
         cards = extract_cards_from_article(title, content, publish_date, url, beehiiv_id)
         
-        print(f"   Found {len(cards)} cards")
+        print(f"   ✅ Found {len(cards)} cards")
         
         # Store cards
         if cards:
@@ -300,6 +316,8 @@ def process_article(post: Dict) -> int:
         
     except Exception as e:
         print(f"❌ Error processing article: {e}")
+        import traceback
+        traceback.print_exc()
         return 0
 
 
