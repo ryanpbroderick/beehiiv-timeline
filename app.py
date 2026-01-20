@@ -91,25 +91,33 @@ def fetch_individual_post(post_id: str) -> Dict:
     # Strip 'post_' prefix if present
     clean_id = post_id.replace('post_', '')
     
-    url = f"https://api.beehiiv.com/v2/posts/{clean_id}"
+    # Try multiple endpoint formats
+    endpoints = [
+        f"https://api.beehiiv.com/v2/publications/{BEEHIIV_PUBLICATION_ID}/posts/{clean_id}",
+        f"https://api.beehiiv.com/v2/posts/{clean_id}",
+    ]
+    
     headers = {
         "Authorization": f"Bearer {BEEHIIV_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    try:
-        print(f"      Fetching full content for {clean_id}...")
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            # The full post is in data['data']
-            return data.get('data', {})
-        else:
-            print(f"      ⚠️  Error fetching post: {response.status_code}")
-            return {}
-    except Exception as e:
-        print(f"      ⚠️  Exception fetching post: {e}")
-        return {}
+    for url in endpoints:
+        try:
+            print(f"      Trying {url.split('beehiiv.com')[1]}...")
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                print(f"      ✅ Success!")
+                # The full post might be in data['data'] or just data
+                return data.get('data', data)
+            else:
+                print(f"      ⚠️  {response.status_code}")
+        except Exception as e:
+            print(f"      ⚠️  Exception: {e}")
+            continue
+    
+    return {}
 
 
 def strip_html(html: str) -> str:
