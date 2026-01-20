@@ -198,75 +198,54 @@ def get_context_paragraph(text: str, sentence: str) -> str:
 
 
 def extract_cards_from_article(title: str, content: str, publish_date: str, url: str, beehiiv_id: str) -> List[Dict]:
-    """Extract cards deterministically from article"""
+    """Extract cards deterministically from article - ONLY with temporal references"""
     
     clean_text = strip_html(content)
     sentences = extract_sentences(clean_text)
     
     print(f"   📝 Found {len(sentences)} sentences")
-    print(f"   📏 Article length: {len(clean_text)} chars")
-    
-    # Debug: show first few sentences
-    if sentences:
-        print(f"   🔍 First sentence: {sentences[0][:100]}...")
     
     cards = []
     card_index = 0
-    sentences_tested = 0
     
     # Also check title for years
     title_years = extract_years(title)
     
     for sentence in sentences:
-        sentences_tested += 1
-        
-        # Skip if sentence is too short
-        if len(sentence) < 40:
-            continue
-        
-        # Skip if sentence is way too long (likely not a good card)
-        if len(sentence) > 400:
+        # Skip if sentence is too short or too long
+        if len(sentence) < 40 or len(sentence) > 400:
             continue
         
         # Extract years from sentence AND title
         sentence_years = extract_years(sentence)
-        years = list(set(sentence_years + title_years))  # Combine and dedupe
+        years = list(set(sentence_years + title_years))
         
-        # Extract entities
-        entities = extract_entities(sentence)
-        
-        # Be very lenient - create card if:
-        # 1. Has any year (in sentence OR title), OR
-        # 2. Has 1+ entities (was 2+), OR
-        # 3. Has temporal/connection phrases
+        # STRICT: Only create card if it has a clear temporal reference
+        # Must have EITHER a year OR a temporal phrase
         has_year = len(years) > 0
-        has_entities = len(entities) >= 1  # Lowered from 2
         has_temporal = has_temporal_reference(sentence)
-        has_connection = has_connection_phrase(sentence)
         
-        # Debug first few sentences
-        if sentences_tested <= 3:
-            print(f"   📊 Sentence {sentences_tested}: year={has_year}({years}), entities={len(entities)}, temporal={has_temporal}, connection={has_connection}")
-        
-        # Create card if ANY of these are true
-        if not (has_year or has_entities or has_temporal or has_connection):
+        # Skip if no temporal reference at all
+        if not (has_year or has_temporal):
             continue
         
         # Get surrounding context
         context = get_context_paragraph(clean_text, sentence)
         
-        # Get all tags from context
+        # Get tags from context
         tags = extract_entities(context)
         
-        # Determine timeline year (use earliest mentioned year, or None)
+        # Determine timeline year
+        # If sentence has years, use earliest
+        # If only temporal phrase (no year), set to None (will go at end)
         timeline_year = min(years) if years else None
         
         # Create card
         card = {
             'beehiiv_id': beehiiv_id,
             'card_index': card_index,
-            'title': sentence[:250],  # Allow longer titles
-            'body': context[:1500],  # Allow longer bodies
+            'title': sentence[:250],
+            'body': context[:1500],
             'timeline_year': timeline_year,
             'tags': tags,
             'issue_title': title,
@@ -277,11 +256,11 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
         cards.append(card)
         card_index += 1
         
-        # Increase limit per article
-        if card_index >= 20:
+        # Limit cards per article
+        if card_index >= 10:
             break
     
-    print(f"   ✅ Created {len(cards)} cards from {sentences_tested} sentences")
+    print(f"   ✅ Created {len(cards)} cards (all with temporal references)")
     
     return cards
 
