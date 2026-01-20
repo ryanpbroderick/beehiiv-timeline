@@ -66,14 +66,19 @@ PEOPLE = [
 
 
 def fetch_beehiiv_posts(limit: int = 50, page: int = 1) -> Dict:
-    """Fetch posts from Beehiiv API"""
+    """Fetch posts from Beehiiv API with content expanded"""
     url = f"https://api.beehiiv.com/v2/publications/{BEEHIIV_PUBLICATION_ID}/posts"
     headers = {
         "Authorization": f"Bearer {BEEHIIV_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    params = {"limit": limit, "page": page}
+    # Use expand parameter to get content
+    params = {
+        "limit": limit,
+        "page": page,
+        "expand": ["free_web_content"]  # This adds the HTML content
+    }
     
     try:
         response = requests.get(url, headers=headers, params=params)
@@ -84,40 +89,6 @@ def fetch_beehiiv_posts(limit: int = 50, page: int = 1) -> Dict:
     except Exception as e:
         print(f"Error fetching posts: {e}")
         raise
-
-
-def fetch_individual_post(post_id: str) -> Dict:
-    """Fetch individual post with full content"""
-    # Strip 'post_' prefix if present
-    clean_id = post_id.replace('post_', '')
-    
-    # Try multiple endpoint formats
-    endpoints = [
-        f"https://api.beehiiv.com/v2/publications/{BEEHIIV_PUBLICATION_ID}/posts/{clean_id}",
-        f"https://api.beehiiv.com/v2/posts/{clean_id}",
-    ]
-    
-    headers = {
-        "Authorization": f"Bearer {BEEHIIV_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    for url in endpoints:
-        try:
-            print(f"      Trying {url.split('beehiiv.com')[1]}...")
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                print(f"      ✅ Success!")
-                # The full post might be in data['data'] or just data
-                return data.get('data', data)
-            else:
-                print(f"      ⚠️  {response.status_code}")
-        except Exception as e:
-            print(f"      ⚠️  Exception: {e}")
-            continue
-    
-    return {}
 
 
 def strip_html(html: str) -> str:
@@ -318,24 +289,13 @@ def process_article(post: Dict) -> int:
         
         print(f"\n📄 Processing: {title}")
         
-        # Fetch full post content
-        full_post = fetch_individual_post(beehiiv_id)
-        
-        if not full_post:
-            print(f"   ⚠️  Could not fetch full post content")
-            return 0
-        
-        # Debug: show all available fields in full post
-        print(f"   📋 Full post fields: {list(full_post.keys())}")
-        
-        # Try different content fields
+        # Content should now be in free_web_content from expand parameter
         content = (
-            full_post.get('content_html') or 
-            full_post.get('content') or 
-            full_post.get('web_content') or 
-            full_post.get('html_content') or 
-            full_post.get('body') or 
-            full_post.get('content_free') or
+            post.get('free_web_content') or
+            post.get('premium_web_content') or
+            post.get('free_email_content') or
+            post.get('content_html') or 
+            post.get('content') or 
             ''
         )
         
@@ -343,8 +303,8 @@ def process_article(post: Dict) -> int:
         if content:
             print(f"   🔍 Content preview: {content[:200]}...")
         
-        publish_date = full_post.get('published_at') or full_post.get('publish_date') or post.get('publish_date') or datetime.utcnow().isoformat()
-        url = full_post.get('web_url') or post.get('web_url', '#')
+        publish_date = post.get('published_at') or post.get('publish_date') or datetime.utcnow().isoformat()
+        url = post.get('web_url', '#')
         
         # Extract cards
         cards = extract_cards_from_article(title, content, publish_date, url, beehiiv_id)
