@@ -290,7 +290,7 @@ def process_article(post: Dict) -> int:
         print(f"\n📄 Processing: {title}")
         
         # Content should now be in free_web_content from expand parameter
-        content = (
+        content_raw = (
             post.get('free_web_content') or
             post.get('premium_web_content') or
             post.get('free_email_content') or
@@ -299,9 +299,19 @@ def process_article(post: Dict) -> int:
             ''
         )
         
+        # Handle if content is a dict (extract the actual HTML)
+        if isinstance(content_raw, dict):
+            content = content_raw.get('html') or content_raw.get('content') or str(content_raw)
+        elif isinstance(content_raw, list):
+            content = ' '.join(str(item) for item in content_raw)
+        else:
+            content = str(content_raw) if content_raw else ''
+        
         print(f"   📝 Content length: {len(content)} chars")
+        print(f"   📋 Content type: {type(content_raw).__name__}")
         if content:
-            print(f"   🔍 Content preview: {content[:200]}...")
+            preview = content[:200] if len(content) > 200 else content
+            print(f"   🔍 Content preview: {preview}...")
         
         publish_date = post.get('published_at') or post.get('publish_date') or datetime.utcnow().isoformat()
         url = post.get('web_url', '#')
