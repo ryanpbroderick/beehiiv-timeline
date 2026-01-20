@@ -92,8 +92,28 @@ def fetch_beehiiv_posts(limit: int = 50, page: int = 1) -> Dict:
 
 
 def strip_html(html: str) -> str:
-    """Remove HTML tags"""
-    return re.sub(r'<[^>]+>', '', html or '')
+    """Remove HTML tags, scripts, and styles"""
+    if not html:
+        return ''
+    
+    # Remove script and style tags with their content
+    text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Remove all other HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Decode HTML entities
+    text = text.replace('&nbsp;', ' ')
+    text = text.replace('&amp;', '&')
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    text = text.replace('&quot;', '"')
+    
+    # Clean up whitespace
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
 
 
 def extract_sentences(text: str) -> List[str]:
@@ -194,6 +214,9 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
     card_index = 0
     sentences_tested = 0
     
+    # Also check title for years
+    title_years = extract_years(title)
+    
     for sentence in sentences:
         sentences_tested += 1
         
@@ -205,24 +228,25 @@ def extract_cards_from_article(title: str, content: str, publish_date: str, url:
         if len(sentence) > 400:
             continue
         
-        # Extract years from sentence
-        years = extract_years(sentence)
+        # Extract years from sentence AND title
+        sentence_years = extract_years(sentence)
+        years = list(set(sentence_years + title_years))  # Combine and dedupe
         
         # Extract entities
         entities = extract_entities(sentence)
         
-        # Be MUCH more lenient - create card if:
-        # 1. Has any year, OR
-        # 2. Has 2+ entities (platforms/companies/people), OR
+        # Be very lenient - create card if:
+        # 1. Has any year (in sentence OR title), OR
+        # 2. Has 1+ entities (was 2+), OR
         # 3. Has temporal/connection phrases
         has_year = len(years) > 0
-        has_entities = len(entities) >= 2
+        has_entities = len(entities) >= 1  # Lowered from 2
         has_temporal = has_temporal_reference(sentence)
         has_connection = has_connection_phrase(sentence)
         
         # Debug first few sentences
         if sentences_tested <= 3:
-            print(f"   📊 Sentence {sentences_tested}: year={has_year}, entities={len(entities)}, temporal={has_temporal}, connection={has_connection}")
+            print(f"   📊 Sentence {sentences_tested}: year={has_year}({years}), entities={len(entities)}, temporal={has_temporal}, connection={has_connection}")
         
         # Create card if ANY of these are true
         if not (has_year or has_entities or has_temporal or has_connection):
