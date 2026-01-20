@@ -88,14 +88,17 @@ def fetch_beehiiv_posts(limit: int = 50, page: int = 1) -> Dict:
 
 def fetch_individual_post(post_id: str) -> Dict:
     """Fetch individual post with full content"""
-    url = f"https://api.beehiiv.com/v2/posts/{post_id}"
+    # Strip 'post_' prefix if present
+    clean_id = post_id.replace('post_', '')
+    
+    url = f"https://api.beehiiv.com/v2/posts/{clean_id}"
     headers = {
         "Authorization": f"Bearer {BEEHIIV_API_KEY}",
         "Content-Type": "application/json"
     }
     
     try:
-        print(f"      Fetching full content for post {post_id}...")
+        print(f"      Fetching full content for {clean_id}...")
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             data = response.json()
